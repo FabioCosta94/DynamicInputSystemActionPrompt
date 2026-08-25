@@ -8,18 +8,19 @@ using UnityEngine.InputSystem.Utilities;
 namespace InputSystemActionPrompts
 {
 
-    
+
     /// <summary>
     /// Enumeration of device type
     /// TODO - Remove and use Input system types more effectively
     /// </summary>
-    public enum InputDeviceType {
+    public enum InputDeviceType
+    {
         Mouse,
         Keyboard,
         GamePad,
         Touchscreen
     }
-    
+
     /// <summary>
     /// Encapsulates a binding map entry
     /// </summary>
@@ -29,40 +30,40 @@ namespace InputSystemActionPrompts
         public bool IsComposite;
         public bool IsPartOfComposite;
     }
-    
+
     public static class InputDevicePromptSystem
     {
-        
+
         /// <summary>
         /// Map of action paths (eg "Player/Move" to binding map entries eg "Gamepad/leftStick")
         /// </summary>
-        private static Dictionary<string,List<ActionBindingMapEntry>> s_ActionBindingMap = new Dictionary<string, List<ActionBindingMapEntry>>();
-        
+        private static Dictionary<string, List<ActionBindingMapEntry>> s_ActionBindingMap = new Dictionary<string, List<ActionBindingMapEntry>>();
+
         /// <summary>
         /// Map of device names (eg "DualShockGamepadHID") to device prompt data (list of action bindings and sprites)
         /// </summary>
-        private static Dictionary<string,InputDevicePromptData> s_DeviceDataBindingMap = new Dictionary<string, InputDevicePromptData>();
-        
+        private static Dictionary<string, InputDevicePromptData> s_DeviceDataBindingMap = new Dictionary<string, InputDevicePromptData>();
+
         /// <summary>
         /// Currently initialised
         /// </summary>
         private static bool s_Initialised = false;
-        
+
         /// <summary>
         /// The settings file
         /// </summary>
         private static InputSystemDevicePromptSettings s_Settings;
-        
+
         /// <summary>
         /// Currently active device
         /// </summary>
         private static InputDevice s_ActiveDevice;
-        
+
         /// <summary>
         /// Delegate for when the active device changes
         /// </summary>
-        public static Action<InputDevice> OnActiveDeviceChanged = delegate {  };
-        
+        public static Action<InputDevice> OnActiveDeviceChanged = delegate { };
+
         /// <summary>
         /// Event listener for button presses on input system
         /// </summary>
@@ -83,7 +84,8 @@ namespace InputSystemActionPrompts
             // check if we have a platform override
             foreach (var platformOverride in s_Settings.RuntimePlatformsOverride)
             {
-                if (platformOverride.Platform == platform) { 
+                if (platformOverride.Platform == platform)
+                {
                     inputDevice = platformOverride.DevicePromptData;
                     return true;
                 }
@@ -92,15 +94,15 @@ namespace InputSystemActionPrompts
             inputDevice = null;
             return false;
         }
-        
+
         /// <summary>
         /// Initialises data structures and load settings, called on first use
         /// </summary>
         private static void Initialise()
         {
             Debug.Log("Initialising InputDevicePromptSystem");
-            s_Settings =InputSystemDevicePromptSettings.GetSettings();
-            
+            s_Settings = InputSystemDevicePromptSettings.GetSettings();
+
             if (s_Settings == null)
             {
                 Debug.LogWarning("InputSystemDevicePromptSettings missing");
@@ -111,14 +113,14 @@ namespace InputSystemActionPrompts
             {
                 Debug.LogError($"{nameof(InputSystemDevicePromptSettings.PromptSpriteFormatter)} must include {InputSystemDevicePromptSettings.PromptSpriteFormatterSpritePlaceholder} or no sprites will be shown.");
             }
-            
+
             // We'll want to listen to buttons being pressed on any device
             // in order to dynamically switch device prompts (From description in InputSystem.cs)
             s_EventListener = InputSystem.onAnyButtonPress.Call(OnButtonPressed);
-            
+
             // Listen to device change. If the active device is disconnected, switch to default
             InputSystem.onDeviceChange += OnDeviceChange;
-            
+
             BuildBindingMaps();
             FindDefaultDevice();
 
@@ -136,7 +138,7 @@ namespace InputSystemActionPrompts
         {
             // If the active device has been disconnected, revert to default device
             if (device != s_ActiveDevice) return;
-            
+
             if ((change == InputDeviceChange.Disconnected) || (change == InputDeviceChange.Removed))
             {
                 FindDefaultDevice();
@@ -144,7 +146,7 @@ namespace InputSystemActionPrompts
                 OnActiveDeviceChanged.Invoke(s_ActiveDevice);
             }
         }
-
+        // Test
         /// <summary>
         /// Replace tags in a given string with TMPPro strings to insert device prompt sprites
         /// </summary>
@@ -159,20 +161,25 @@ namespace InputSystemActionPrompts
             var replacedText = inputText;
             foreach (var tag in foundTags)
             {
-                var replacementTagText = GetActionPathBindingTextSpriteTags(tag);
-                
-                //if PromptSpriteFormatter is empty for some reason return the text as if formatter was {SPRITE} (normally)
+                string resolvedTag;
+                if (tag.StartsWith("/") && s_ActiveActionMap != null)
+                    resolvedTag = $"{s_ActiveActionMap}{tag}";
+                else
+                    resolvedTag = tag;
+
+                string replacementTagText = GetActionPathBindingTextSpriteTags(resolvedTag);
+
                 var promptSpriteFormatter = s_Settings.PromptSpriteFormatter == "" ? InputSystemDevicePromptSettings.PromptSpriteFormatterSpritePlaceholder : s_Settings.PromptSpriteFormatter;
-                //PromptSpriteFormatter in settings uses {SPRITE} as a placeholder for the sprite, convert it to {0} for string.Format
-                promptSpriteFormatter = promptSpriteFormatter.Replace( InputSystemDevicePromptSettings.PromptSpriteFormatterSpritePlaceholder, "{0}");
+                promptSpriteFormatter = promptSpriteFormatter.Replace(InputSystemDevicePromptSettings.PromptSpriteFormatterSpritePlaceholder, "{0}");
                 replacementTagText = string.Format(promptSpriteFormatter, replacementTagText);
-                
+
+                // still replace using the ORIGINAL tag, since that's what's literally in the text
                 replacedText = replacedText.Replace($"{s_Settings.OpenTag}{tag}{s_Settings.CloseTag}", replacementTagText);
             }
 
             return replacedText;
         }
-        
+
         /// <summary>
         /// Gets the first matching sprite (eg DualShock Cross Button Sprite) for the given input tag (eg "Player/Jump")
         /// Currently only supports one sprite, not composite (eg WASD)
@@ -182,8 +189,12 @@ namespace InputSystemActionPrompts
         public static Sprite GetActionPathBindingSprite(string inputTag)
         {
             if (!s_Initialised) Initialise();
+
+            if (inputTag.StartsWith("/") && s_ActiveActionMap != null)
+                inputTag = $"{s_ActiveActionMap}{inputTag}";
+
             var (_, matchingPrompt) = GetActionPathBindingPromptEntries(inputTag);
-            return matchingPrompt != null && matchingPrompt.Count>0 ? matchingPrompt[0].PromptSprite : null;
+            return matchingPrompt != null && matchingPrompt.Count > 0 ? matchingPrompt[0].PromptSprite : null;
         }
 
         /// <summary>
@@ -219,7 +230,7 @@ namespace InputSystemActionPrompts
 
                 validDevice = s_DeviceDataBindingMap[activeDeviceName];
             }
-            
+
 
             var matchingSprite = validDevice.DeviceSpriteEntries.FirstOrDefault((sprite) =>
                            String.Equals(sprite.SpriteName, spriteName,
@@ -260,8 +271,8 @@ namespace InputSystemActionPrompts
             }
 
             var (validDevice, matchingPrompt) = GetActionPathBindingPromptEntries(inputTag);
-           
-            if (matchingPrompt==null || matchingPrompt.Count==0)
+
+            if (matchingPrompt == null || matchingPrompt.Count == 0)
             {
                 return $"MISSING_PROMPT '{inputTag}'";
             }
@@ -279,7 +290,7 @@ namespace InputSystemActionPrompts
         /// </summary>
         /// <param name="inputTag"></param>
         /// <returns></returns>
-        private static (InputDevicePromptData,List<ActionBindingPromptEntry>) GetActionPathBindingPromptEntries(string inputTag)
+        private static (InputDevicePromptData, List<ActionBindingPromptEntry>) GetActionPathBindingPromptEntries(string inputTag)
         {
             InputDevicePromptData validDevice;
 
@@ -299,8 +310,8 @@ namespace InputSystemActionPrompts
             }
 
             var validEntries = new List<ActionBindingPromptEntry>();
-            var actionBindings=s_ActionBindingMap[lowerCaseTag];
-            
+            var actionBindings = s_ActionBindingMap[lowerCaseTag];
+
             foreach (var actionBinding in actionBindings)
             {
                 //Debug.Log($"Checking binding '{actionBinding}' on device {validDevice.name}");
@@ -319,7 +330,7 @@ namespace InputSystemActionPrompts
                 else
                 {
                     // This is a usage, eg "Submit" or "Cancel", in the format "*/{Submit}"
-                    
+
                     // Its possible in some control schemes (eg mouse keyboard) that active device
                     // Doesnt have a given usage (eg submit), so will want to find an alternative
 
@@ -331,7 +342,7 @@ namespace InputSystemActionPrompts
 
                     for (var i = 0; i < deviceList.Count && !matchingUsageFound; i++)
                     {
-                        var testDevice=deviceList[i];
+                        var testDevice = deviceList[i];
                         foreach (var control in testDevice.allControls)
                         {
                             foreach (var controlUsage in control.usages)
@@ -356,7 +367,7 @@ namespace InputSystemActionPrompts
 
             return (validDevice, validEntries);
         }
-        
+
         /// <summary>
         /// Extract the usage from a binding path, eg "*/{Submit}" returns "Submit"
         /// </summary>
@@ -365,10 +376,10 @@ namespace InputSystemActionPrompts
         private static string GetUsageFromBindingPath(string actionBinding)
         {
             return actionBinding.Contains("*/{") ? actionBinding.Substring(3, actionBinding.Length - 4) : String.Empty;
-        } 
-        
-        
-        
+        }
+
+
+
         /// <summary>
         /// Extracts all tags from a given string
         /// </summary>
@@ -391,7 +402,7 @@ namespace InputSystemActionPrompts
             return outputTags;
         }
 
-       
+
         /// <summary>
         /// Finds default device based on current settings priorities
         /// </summary>
@@ -399,7 +410,7 @@ namespace InputSystemActionPrompts
         {
             // When we start up there have been no button presses, so we want to pick the first device
             // that matches the priorities in the settings file
-            
+
             foreach (var deviceType in s_Settings.DefaultDevicePriority)
             {
                 foreach (var device in InputSystem.devices.Where(device => DeviceMatchesType(device, deviceType)))
@@ -421,7 +432,7 @@ namespace InputSystemActionPrompts
                 _ => false
             };
         }
-        
+
 
         /// <summary>
         /// Builds internal map of all actions (eg "Player/Jump" to available binding paths (eg "Gamepad/ButtonSouth")
@@ -429,7 +440,7 @@ namespace InputSystemActionPrompts
         private static void BuildBindingMaps()
         {
             s_ActionBindingMap = new Dictionary<string, List<ActionBindingMapEntry>>();
-            
+
             // Build a map of all controls and associated bindings
             foreach (var inputActionAsset in s_Settings.InputActionAssets)
             {
@@ -440,7 +451,7 @@ namespace InputSystemActionPrompts
                     {
                         var bindingPath = $"{actionMap.name}/{binding.action}";
                         var bindingPathLower = bindingPath.ToLower();
-                        
+
                         //Debug.Log($"Binding {bindingPathLower} to path {binding.path}");
                         var entry = new ActionBindingMapEntry
                         {
@@ -454,7 +465,7 @@ namespace InputSystemActionPrompts
                         }
                         else
                         {
-                            s_ActionBindingMap.Add(bindingPathLower, new List<ActionBindingMapEntry> { entry});
+                            s_ActionBindingMap.Add(bindingPathLower, new List<ActionBindingMapEntry> { entry });
                         }
                     }
                 }
@@ -478,17 +489,42 @@ namespace InputSystemActionPrompts
                 }
             }
         }
-        
+
         /// <summary>
         /// Called when a button is pressed on any device
         /// </summary>
         /// <param name="button"></param>
         private static void OnButtonPressed(InputControl button)
         {
-            if (s_ActiveDevice==button.device) return;
+            if (s_ActiveDevice == button.device) return;
             s_ActiveDevice = button.device;
             OnActiveDeviceChanged.Invoke(s_ActiveDevice);
         }
-        
+
+
+        /// <summary>
+        /// The action map currently considered "active" for tags written without
+        /// an explicit map prefix (for example [/BabyJump] instead of [SameDevice/BabyJump]).
+        /// </summary>
+        private static string s_ActiveActionMap;
+
+        /// <summary>
+        /// Fired when the active action map alias changes (independent of device changes)
+        /// </summary>
+        public static Action OnActionMapChanged = delegate { };
+
+        /// <summary>
+        /// To call whenever your game logic switches control scheme / action map
+        /// (SameDevice -> DifferentDevice and so on)
+        /// By the way I'm at max productivity when I listen to this https://youtu.be/GX5gLAin-x4
+        /// If anyone says it's bad I'm quitting the team
+        /// </summary>
+        public static void SetActiveActionMap(string actionMapName)
+        {
+            if (!s_Initialised) Initialise();
+            if (s_ActiveActionMap == actionMapName) return;
+            s_ActiveActionMap = actionMapName;
+            OnActionMapChanged.Invoke();
+        }
     }
 }

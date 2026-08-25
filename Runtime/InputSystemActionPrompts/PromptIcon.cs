@@ -26,12 +26,14 @@ namespace InputSystemActionPrompts
             RefreshIcon();
             // Listen to device changing
             InputDevicePromptSystem.OnActiveDeviceChanged+= DeviceChanged;
+            InputDevicePromptSystem.OnActionMapChanged += RefreshIcon;
         }
         
         private void OnDestroy()
         {
             // Remove listener
             InputDevicePromptSystem.OnActiveDeviceChanged-= DeviceChanged;
+            InputDevicePromptSystem.OnActionMapChanged -= RefreshIcon;
         }
         
         /// <summary>
