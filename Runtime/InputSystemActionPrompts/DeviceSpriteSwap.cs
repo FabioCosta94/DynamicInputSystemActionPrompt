@@ -18,6 +18,13 @@ namespace InputSystemActionPrompts
         /// </summary>
         [SerializeField] private string customSpriteName = "";
 
+        /// <summary>
+        /// Which side of the screen / character this sprite belongs to.
+        /// Leave as Auto for single-player UI (uses the package's global auto-detected device).
+        /// Set to Baby or Mother for split-screen prompts pinned to that character's assigned device.
+        /// </summary>
+        [SerializeField] private PromptContextId m_Context = PromptContextId.Auto;
+
         [SerializeField] private bool _setNativeSize = true;
 
         void Start()
@@ -25,23 +32,36 @@ namespace InputSystemActionPrompts
             m_Image = GetComponent<Image>();
             if (m_Image == null) return;
             RefreshSprite();
-            // Listen to device changing
-            InputDevicePromptSystem.OnActiveDeviceChanged += DeviceChanged;
+
+            if (m_Context == PromptContextId.Auto)
+                InputDevicePromptSystem.OnActiveDeviceChanged += DeviceChanged;
+            else
+                InputDevicePromptContextRegistry.DeviceChanged += ContextDeviceChanged;
         }
 
         private void OnDestroy()
         {
-            // Remove listener
-            InputDevicePromptSystem.OnActiveDeviceChanged -= DeviceChanged;
+            if (m_Context == PromptContextId.Auto)
+                InputDevicePromptSystem.OnActiveDeviceChanged -= DeviceChanged;
+            else
+                InputDevicePromptContextRegistry.DeviceChanged -= ContextDeviceChanged;
         }
 
         /// <summary>
-        /// Called when active input device changed
+        /// Called when the global auto-detected active device changes (Auto context only)
         /// </summary>
-        /// <param name="obj"></param>
         private void DeviceChanged(InputDevice device)
         {
             RefreshSprite();
+        }
+
+        /// <summary>
+        /// Called when a context-registry device changes; only react if it's our context
+        /// </summary>
+        private void ContextDeviceChanged(PromptContextId context)
+        {
+            if (context == m_Context)
+                RefreshSprite();
         }
 
         /// <summary>
@@ -49,7 +69,10 @@ namespace InputSystemActionPrompts
         /// </summary>
         private void RefreshSprite()
         {
-            var sourceSprite = InputDevicePromptSystem.GetDeviceSprite(customSpriteName);
+            var sourceSprite = m_Context == PromptContextId.Auto
+                ? InputDevicePromptSystem.GetDeviceSprite(customSpriteName)
+                : InputDevicePromptSystem.GetDeviceSprite(customSpriteName, InputDevicePromptContextRegistry.GetDevice(m_Context));
+
             if (sourceSprite == null) return;
 
             m_Image.sprite = sourceSprite;
