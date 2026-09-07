@@ -29,6 +29,7 @@ namespace InputSystemActionPrompts
         public string BindingPath;
         public bool IsComposite;
         public bool IsPartOfComposite;
+        public string CompositeName;
     }
 
     public static class InputDevicePromptSystem
@@ -338,6 +339,25 @@ namespace InputSystemActionPrompts
 
             foreach (var actionBinding in actionBindings)
             {
+                // Composite bindings (eg WASD, D-Pad) resolve as a single collapsed icon, matched by the
+                // composite's name rather than by any individual part's physical control path. Author a
+                // prompt entry with ActionBindingPath "Composite/<Name>" (eg "Composite/WASD") in the
+                // relevant device's InputDevicePromptData asset to supply that icon.
+                if (actionBinding.IsComposite)
+                {
+                    if (string.IsNullOrEmpty(actionBinding.CompositeName))
+                        continue;
+
+                    var compositeKey = $"Composite/{actionBinding.CompositeName}";
+                    var matchingCompositePrompt = validDevice.ActionBindingPromptEntries.FirstOrDefault((prompt) =>
+                        String.Equals(prompt.ActionBindingPath, compositeKey, StringComparison.CurrentCultureIgnoreCase));
+                    if (matchingCompositePrompt != null)
+                    {
+                        validEntries.Add(matchingCompositePrompt);
+                    }
+                    continue;
+                }
+
                 //Debug.Log($"Checking binding '{actionBinding}' on device {validDevice.name}");
                 var usage = GetUsageFromBindingPath(actionBinding.BindingPath);
                 if (string.IsNullOrEmpty(usage))
@@ -401,8 +421,6 @@ namespace InputSystemActionPrompts
         {
             return actionBinding.Contains("*/{") ? actionBinding.Substring(3, actionBinding.Length - 4) : String.Empty;
         }
-
-
 
         /// <summary>
         /// Extracts all tags from a given string
@@ -471,17 +489,31 @@ namespace InputSystemActionPrompts
                 var allActionMaps = inputActionAsset.actionMaps;
                 foreach (var actionMap in allActionMaps)
                 {
+                    // Tracks the name of the composite (eg "WASD") whose part rows we're currently
+                    // walking through, since part rows immediately follow their composite header row.
+                    string currentCompositeName = null;
+
                     foreach (var binding in actionMap.bindings)
                     {
                         var bindingPath = $"{actionMap.name}/{binding.action}";
                         var bindingPathLower = bindingPath.ToLower();
+
+                        if (binding.isComposite)
+                            currentCompositeName = binding.name;
+
+                        // Skip individual composite part rows (eg the separate W/A/S/D or D-Pad Up/Down/Left/Right
+                        // bindings) entirely - we only want ONE entry representing the whole composite, so it
+                        // resolves to a single icon rather than one icon per physical key/button.
+                        if (binding.isPartOfComposite)
+                            continue;
 
                         //Debug.Log($"Binding {bindingPathLower} to path {binding.path}");
                         var entry = new ActionBindingMapEntry
                         {
                             BindingPath = binding.effectivePath,
                             IsComposite = binding.isComposite,
-                            IsPartOfComposite = binding.isPartOfComposite
+                            IsPartOfComposite = binding.isPartOfComposite,
+                            CompositeName = binding.isComposite ? currentCompositeName : null
                         };
                         if (s_ActionBindingMap.TryGetValue(bindingPathLower, out var value))
                         {
